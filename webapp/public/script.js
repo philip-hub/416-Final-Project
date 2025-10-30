@@ -1,6 +1,8 @@
 async function generate_model() {
   let prompt = document.querySelector("#prompt").value;
 
+  document.querySelector("#model").textContent = "generating model...";
+
   let response = await fetch("/generate_model", {
     method: "POST",
     headers: {
