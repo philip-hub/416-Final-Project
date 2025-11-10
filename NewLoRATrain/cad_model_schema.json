@@ -1,0 +1,212 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "CAD Model Schema",
+  "description": "JSON Schema for parametric CAD models from CADmium dataset",
+  "type": "object",
+  "required": [
+    "parts"
+  ],
+  "properties": {
+    "parts": {
+      "type": "object",
+      "patternProperties": {
+        "^part_\\d+$": {
+          "type": "object",
+          "required": [
+            "coordinate_system",
+            "sketch",
+            "extrusion",
+            "description"
+          ],
+          "properties": {
+            "coordinate_system": {
+              "type": "object",
+              "required": [
+                "Euler Angles",
+                "Translation Vector"
+              ],
+              "properties": {
+                "Euler Angles": {
+                  "type": "array",
+                  "items": {
+                    "type": "number"
+                  },
+                  "minItems": 3,
+                  "maxItems": 3,
+                  "description": "Rotation angles in degrees [x, y, z]"
+                },
+                "Translation Vector": {
+                  "type": "array",
+                  "items": {
+                    "type": "number"
+                  },
+                  "minItems": 3,
+                  "maxItems": 3,
+                  "description": "Translation in units [x, y, z]"
+                }
+              }
+            },
+            "sketch": {
+              "type": "object",
+              "patternProperties": {
+                "^face_\\d+$": {
+                  "type": "object",
+                  "patternProperties": {
+                    "^loop_\\d+$": {
+                      "type": "object",
+                      "patternProperties": {
+                        "^line_\\d+$": {
+                          "type": "object",
+                          "required": [
+                            "Start Point",
+                            "End Point"
+                          ],
+                          "properties": {
+                            "Start Point": {
+                              "type": "array",
+                              "items": {
+                                "type": "number"
+                              },
+                              "minItems": 2,
+                              "maxItems": 2
+                            },
+                            "End Point": {
+                              "type": "array",
+                              "items": {
+                                "type": "number"
+                              },
+                              "minItems": 2,
+                              "maxItems": 2
+                            }
+                          }
+                        },
+                        "^arc_\\d+$": {
+                          "type": "object",
+                          "required": [
+                            "Start Point",
+                            "Mid Point",
+                            "End Point"
+                          ],
+                          "properties": {
+                            "Start Point": {
+                              "type": "array",
+                              "items": {
+                                "type": "number"
+                              },
+                              "minItems": 2,
+                              "maxItems": 2
+                            },
+                            "Mid Point": {
+                              "type": "array",
+                              "items": {
+                                "type": "number"
+                              },
+                              "minItems": 2,
+                              "maxItems": 2
+                            },
+                            "End Point": {
+                              "type": "array",
+                              "items": {
+                                "type": "number"
+                              },
+                              "minItems": 2,
+                              "maxItems": 2
+                            }
+                          }
+                        },
+                        "^circle_\\d+$": {
+                          "type": "object",
+                          "required": [
+                            "Center",
+                            "Radius"
+                          ],
+                          "properties": {
+                            "Center": {
+                              "type": "array",
+                              "items": {
+                                "type": "number"
+                              },
+                              "minItems": 2,
+                              "maxItems": 2
+                            },
+                            "Radius": {
+                              "type": "number",
+                              "minimum": 0,
+                              "exclusiveMinimum": true
+                            }
+                          }
+                        }
+                      },
+                      "additionalProperties": false
+                    }
+                  },
+                  "additionalProperties": false
+                }
+              },
+              "additionalProperties": false
+            },
+            "extrusion": {
+              "type": "object",
+              "required": [
+                "extrude_depth_towards_normal",
+                "extrude_depth_opposite_normal",
+                "sketch_scale",
+                "operation"
+              ],
+              "properties": {
+                "extrude_depth_towards_normal": {
+                  "type": "number",
+                  "minimum": 0
+                },
+                "extrude_depth_opposite_normal": {
+                  "type": "number",
+                  "minimum": 0
+                },
+                "sketch_scale": {
+                  "type": "number",
+                  "exclusiveMinimum": 0
+                },
+                "operation": {
+                  "type": "string",
+                  "enum": [
+                    "NewBodyFeatureOperation",
+                    "CutFeatureOperation",
+                    "JoinFeatureOperation"
+                  ]
+                }
+              }
+            },
+            "description": {
+              "type": "object",
+              "required": [
+                "name",
+                "shape",
+                "length",
+                "width",
+                "height"
+              ],
+              "properties": {
+                "name": {
+                  "type": "string"
+                },
+                "shape": {
+                  "type": "string"
+                },
+                "length": {
+                  "type": "number"
+                },
+                "width": {
+                  "type": "number"
+                },
+                "height": {
+                  "type": "number"
+                }
+              }
+            }
+          }
+        }
+      },
+      "additionalProperties": false
+    }
+  }
+}
