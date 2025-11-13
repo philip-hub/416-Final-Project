@@ -1,6 +1,7 @@
 import flask
 from flask import request
 import json
+import time
 
 from model import generate_model
 
@@ -13,10 +14,15 @@ def handle_generate_model():
     print(f"recieved a generation prompt \"{prompt}\"")
 
     # TODO: query our trained model with the prompt
+    start_time = time.time()
     model = generate_model(prompt)
+    end_time = time.time()
 
     return flask.Response(
-        json.dumps({ "model": model }),
+        json.dumps({
+            "generationTime": f"{end_time - start_time}s",
+            "model": model,
+        }),
         status=200,
         headers={
             "Content-Type": "text/javascript; charset=utf-8",

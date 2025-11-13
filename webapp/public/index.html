@@ -6,11 +6,15 @@
         <link rel="stylesheet" href="style.css">
     </head>
     <body>
-        <h1>3D Model Generator</h1> 
-        <p>Describe the model to be generated:</p>
-        <p><input id="prompt" type="textbox"></p>
-        <p><input id="generate" type="button" value="Generate"></p>
-        <hr>
-        <div id="model"></div>
+        <div id="content">
+            <h1>3D Model Generator</h1> 
+            <hr>
+            <p>Describe a model:</p>
+            <div><textarea id="prompt" rows="6"></textarea></div>
+            <p><input id="generate" type="button" value="Generate"></p>
+            <hr>
+            <p id="output"></p>
+            <div id="model-json-div"></div>
+        </div>
     </body>
 </html>
