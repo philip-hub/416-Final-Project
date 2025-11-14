@@ -99,7 +99,7 @@ if not all(k in dataset.column_names for k in ["annotation", "json_desc"]):
     raise RuntimeError("Expected columns 'annotation' and 'json_desc' not found in dataset.")
 
 # Keep a manageable subset for demo; increase as VRAM allows
-subset_n = min(2000, len(dataset))  # adjust as needed
+subset_n = min(100, len(dataset))  # adjust as needed
 dataset = dataset.shuffle(seed=42).select(range(subset_n))
 
 # Filter out rows without json_desc
@@ -184,6 +184,109 @@ CADMIUM_JSON_SCHEMA = {
     }
 }
 
+
+# ----------------------------------------
+# JSON sanitize/repair and CADmium coercion
+# ----------------------------------------
+# Requires: pip install json-repair json5 orjson
+try:
+    import orjson
+except Exception:
+    orjson = None
+
+def _redump(obj) -> str:
+    if orjson is not None:
+        return orjson.dumps(obj).decode("utf-8")
+    else:
+        return json.dumps(obj, separators=(",", ":"), ensure_ascii=False)
+
+def sanitize_json_text(raw: str) -> str:
+    """Deterministic, non-AI JSON cleanup: strip fences, try strict parse,
+    try json-repair, try JSON5, finally extract the largest {...} or [...]"""
+    s = (raw or "").strip()
+
+    # Strip code fences / leading prose
+    if "```" in s:
+        parts = s.split("```")
+        s = max(parts, key=len).strip()
+
+    # 1) strict json
+    try:
+        return _redump(json.loads(s))
+    except Exception:
+        pass
+
+    # 2) json-repair
+    if repair_json is not None:
+        try:
+            repaired = repair_json(s)
+            return _redump(json.loads(repaired))
+        except Exception:
+            pass
+
+    # 3) JSON5
+    try:
+        import json5
+        obj = json5.loads(s)
+        return _redump(obj)
+    except Exception:
+        pass
+
+    # 4) extract the largest JSON-looking fragment
+    import re
+    m = re.search(r'(\{(?:[^{}]|(?1))*\}|\[(?:[^\[\]]|(?1))*\])', s, flags=re.DOTALL)
+    if m:
+        frag = m.group(1)
+        try:
+            return _redump(json.loads(frag))
+        except Exception:
+            if repair_json is not None:
+                try:
+                    return _redump(json.loads(repair_json(frag)))
+                except Exception:
+                    pass
+    return s  # give back best-effort string
+
+def enforce_cadmium_shape(text: str) -> str:
+    """Ensure top-level CADmium envelope exists with minimal required fields."""
+    try:
+        obj = json.loads(text)
+    except Exception:
+        return text  # let validator complain
+
+    # Must be an object
+    if not isinstance(obj, dict):
+        obj = {}
+
+    # Ensure "parts" is a dict
+    parts = obj.get("parts")
+    if not isinstance(parts, dict):
+        parts = {}
+        obj["parts"] = parts
+
+    # If empty, scaffold one minimal part
+    if not parts:
+        parts["part_1"] = {}
+
+    # Ensure required keys inside each part
+    for pid, p in list(parts.items()):
+        if not isinstance(p, dict):
+            p = {}
+            parts[pid] = p
+
+        p.setdefault("coordinate_system", {
+            "Euler Angles": [0.0, 0.0, 0.0],
+            "Translation Vector": [0.0, 0.0, 0.0],
+        })
+        p.setdefault("sketch", {})
+        p.setdefault("extrusion", {
+            "extrude_depth_towards_normal": 0.0,
+            "extrude_depth_opposite_normal": 0.0,
+            "sketch_scale": 1.0,
+            "operation": "NewBodyFeatureOperation",
+        })
+
+    return _redump(obj)
 # ----------------------------------------
 # Format dataset to chat-style messages with correct target mapping
 # ----------------------------------------
@@ -358,6 +461,9 @@ def generate_cad_json_unconstrained(instruction: str, max_new_tokens=512, temper
     text = tokenizer.decode(outputs[0], skip_special_tokens=True)
     if "<|assistant|>" in text:
         text = text.split("<|assistant|>")[-1].strip()
+    # Sanitize and coerce
+    text = sanitize_json_text(text)
+    text = enforce_cadmium_shape(text)
     return text
 
 def generate_cad_json_constrained(instruction: str, max_new_tokens=512, temperature=0.7, top_p=0.9) -> str:
@@ -381,12 +487,9 @@ def generate_cad_json_constrained(instruction: str, max_new_tokens=512, temperat
         print("🟡 Outlines not available — using fallback generation")
         text = generate_cad_json_unconstrained(instruction, max_new_tokens, temperature, top_p)
 
-    # Optional repair & validation
-    if repair_json is not None:
-        try:
-            text = repair_json(text)
-        except Exception:
-            pass
+    # Sanitize/repair/coerce pipeline
+    text = sanitize_json_text(text)
+    text = enforce_cadmium_shape(text)
 
     if Draft7Validator is not None:
         try:
@@ -409,7 +512,7 @@ eval_prompts: List[str] = [
     "Design a cylinder with radius 3mm and height 15mm"
 ]
 
-print("\n🧪 Post-training eval with constrained decoding")
+print("\n🧪 Post-training eval with constrained decoding (with JSON sanitize/repair)")
 print("=" * 80)
 for i, p in enumerate(eval_prompts, 1):
     print(f"\n📝 Prompt {i}: {p}")
@@ -419,3 +522,38 @@ for i, p in enumerate(eval_prompts, 1):
     print("-" * 80)
 print("=" * 80)
 print("✅ Eval finished")
+
+
+
+"""
+🧪 Post-training eval with constrained decoding (with JSON sanitize/repair)
+================================================================================
+
+📝 Prompt 1: Create a rectangular sketch 10mm by 20mm centered at the origin
+--------------------------------------------------------------------------------
+🟡 Outlines not available — using fallback generation
+The `seen_tokens` attribute is deprecated and will be removed in v4.41. Use the `cache_position` model input instead.
+{"parts":{"part_1":{"coordinate_system":{"Euler Angles":[0.0,0.0,0.0],"Translation Vector":[0.0,0.0,0.0]},"sketch":{},"extrusion":{"extrude_depth_towards_normal":0.0,"extrude_depth_opposite_normal":0.0,"sketch_scale":1.0,"operation":"NewBodyFeatureOperation"}}}}
+--------------------------------------------------------------------------------
+
+📝 Prompt 2: Make a circular sketch with radius 5mm at position (10, 10)
+--------------------------------------------------------------------------------
+🟡 Outlines not available — using fallback generation
+{"parts":{"part_1":{"coordinate_system":{"Euler Angles":[0.0,0.0,0.0],"Translation Vector":[0.0,0.0,0.0]},"sketch":{},"extrusion":{"extrude_depth_towards_normal":0.0,"extrude_depth_opposite_normal":0.0,"sketch_scale":1.0,"operation":"NewBodyFeatureOperation"}}}}
+--------------------------------------------------------------------------------
+
+📝 Prompt 3: Create a cube with side length 10 mm
+--------------------------------------------------------------------------------
+🟡 Outlines not available — using fallback generation
+⚠️ JSON does not fully match schema (1 issue(s)).
+{"CADmium":{"object":{"Shape":{"type":"Box","Dimensions":{"Length":"0.01","Width":"0.01","Height":"0.01"}}}},"parts":{"part_1":{"coordinate_system":{"Euler Angles":[0.0,0.0,0.0],"Translation Vector":[0.0,0.0,0.0]},"sketch":{},"extrusion":{"extrude_depth_towards_normal":0.0,"extrude_depth_opposite_normal":0.0,"sketch_scale":1.0,"operation":"NewBodyFeatureOperation"}}}}
+--------------------------------------------------------------------------------
+
+📝 Prompt 4: Design a cylinder with radius 3mm and height 15mm
+--------------------------------------------------------------------------------
+🟡 Outlines not available — using fallback generation
+⚠️ JSON does not fully match schema (1 issue(s)).
+{"CAD_Part":{},"parts":{"part_1":{"coordinate_system":{"Euler Angles":[0.0,0.0,0.0],"Translation Vector":[0.0,0.0,0.0]},"sketch":{},"extrusion":{"extrude_depth_towards_normal":0.0,"extrude_depth_opposite_normal":0.0,"sketch_scale":1.0,"operation":"NewBodyFeatureOperation"}}}}
+
+
+"""
